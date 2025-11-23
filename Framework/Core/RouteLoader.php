@@ -10,74 +10,91 @@ use Framework\Core\Attributes\Post;
 
 class RouteLoader
 {
-    private string $basePath;
-    private array $routes = [];
+  private string $basePath;
+  private array $routes = [];
 
-    public function __construct()
-    {
-        $this->basePath = dirname(__DIR__, 2) . '/App/routes';
+  public function __construct()
+  {
+    $this->basePath = dirname(__DIR__, 2) . '/App/routes';
+  }
+
+  public function load(): array
+  {
+    $iterator = new RecursiveIteratorIterator(
+      new RecursiveDirectoryIterator($this->basePath)
+    );
+
+    foreach ($iterator as $file) {
+      if ($file->isDir())
+        continue;
+
+      if (!preg_match('/Controller\.php$/', $file->getFilename())) {
+        continue;
+      }
+
+      $class = $this->convertFileToClass($file->getRealPath());
+
+      if (!class_exists($class)) {
+        continue;
+      }
+
+      $this->inspectController($class);
     }
 
-    public function load(): array
-    {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->basePath)
-        );
+    return $this->routes;
+  }
 
-        foreach ($iterator as $file) {
-            if ($file->isDir()) continue;
+  private function convertFileToClass(string $filePath): string
+  {
+    // Example: /var/www/App/routes/products/ProductsController.php
+    $relative = str_replace(dirname(__DIR__, 2) . '/', '', $filePath);
+    $class = str_replace('/', '\\', $relative);
+    return preg_replace('/\.php$/', '', $class);
+  }
 
-            if (!preg_match('/Controller\.php$/', $file->getFilename())) {
-                continue;
-            }
+  private function inspectController(string $class)
+  {
+    $reflection = new ReflectionClass($class);
 
-            $class = $this->convertFileToClass($file->getRealPath());
+    foreach ($reflection->getMethods() as $method) {
+      foreach ($method->getAttributes() as $attribute) {
 
-            if (!class_exists($class)) {
-                continue;
-            }
+        $instance = $attribute->newInstance();
 
-            $this->inspectController($class);
+        if ($instance instanceof Get) {
+          $this->routes[] = [
+            'method' => 'GET',
+            'path' => $instance->path,
+            'regex' => $this->convertToRegex($instance->path),
+            'class' => $class,
+            'function' => $method->getName(),
+            'params' => $this->extractParams($instance->path)
+          ];
+
         }
 
-        return $this->routes;
-    }
-
-    private function convertFileToClass(string $filePath): string
-    {
-        // Example: /var/www/App/routes/products/ProductsController.php
-        $relative = str_replace(dirname(__DIR__, 2) . '/', '', $filePath);
-        $class = str_replace('/', '\\', $relative);
-        return preg_replace('/\.php$/', '', $class);
-    }
-
-    private function inspectController(string $class)
-    {
-        $reflection = new ReflectionClass($class);
-
-        foreach ($reflection->getMethods() as $method) {
-            foreach ($method->getAttributes() as $attribute) {
-
-                $instance = $attribute->newInstance();
-
-                if ($instance instanceof Get) {
-                    $this->routes[] = [
-                        'method' => 'GET',
-                        'path' => $instance->path,
-                        'class' => $class,
-                        'function' => $method->getName()
-                    ];
-                }
-
-                if ($instance instanceof Post) {
-                    $this->routes[] = [
-                        'method' => 'POST',
-                        'path' => $instance->path,
-                        'class' => $class,
-                        'function' => $method->getName()
-                    ];
-                }
-            }
+        if ($instance instanceof Post) {
+          $this->routes[] = [
+            'method' => 'POST',
+            'path' => $instance->path,
+            'class' => $class,
+            'function' => $method->getName()
+          ];
         }
+      }
     }
+  }
+
+  private function convertToRegex(string $path): string
+  {
+    $regex = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<$1>[^/]+)', $path);
+    return '#^' . $regex . '$#';
+  }
+
+  private function extractParams(string $path): array
+  {
+    preg_match_all('/\{([a-zA-Z0-9_]+)\}/', $path, $matches);
+    return $matches[1];
+  }
+
 }
