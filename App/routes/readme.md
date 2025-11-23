@@ -14,13 +14,13 @@ Controllers declare endpoints with attributes like `#[Get('/path')]` and `#[Post
 App/
   routes/
     products/
-      products.controller.php
-      products.service.php
-      products.repository.php
+      productsController.php
+      productsService.php
+      productsRepository.php
     users/
-      users.controller.php
-      users.service.php
-      users.repository.php
+      usersController.php
+      usersService.php
+      usersRepository.php
     README.md
 ```
 
