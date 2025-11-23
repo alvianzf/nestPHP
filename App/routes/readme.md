@@ -31,6 +31,7 @@ Each folder is a module.
 Controllers define routes using the framework’s HTTP attributes:
 
 - `#[Get('/path')]`
+- `#[Get('/path/{params}')]`
 - `#[Post('/path')]`
 - `#[Put('/path')]`
 - `#[Delete('/path')]`
@@ -56,6 +57,14 @@ class ProductsController {
     #[Get('/')]
     public function getAll() {
         return $this->service->findAll();
+    }
+
+    #[Get('/{id}')]
+    public function getOne($id) {
+        return [
+            'id' => $id,
+            'status' => 'ok'
+        ];
     }
 
     #[Post('/')]
