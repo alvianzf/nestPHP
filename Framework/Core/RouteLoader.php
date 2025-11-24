@@ -5,116 +5,84 @@ namespace Framework\Core;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
-
 use Framework\Core\Attributes\Get;
-use Framework\Core\Attributes\Post;
 
 class RouteLoader
 {
-  private string $basePath;
-  private array $routes = [];
+    private array $routes = [];
 
-  public function __construct()
-  {
-    $this->basePath = dirname(__DIR__, 2) . '/App/routes';
-  }
-
-  public function load(): array
-  {
-    $iterator = new RecursiveIteratorIterator(
-      new RecursiveDirectoryIterator($this->basePath)
-    );
-
-    foreach ($iterator as $file) {
-
-      if ($file->isDir()) {
-        continue;
-      }
-
-      if (!preg_match('/Controller\.php$/', $file->getFilename())) {
-        continue;
-      }
-
-      // Determine folder name for auto prefix
-      $folderName = basename(dirname($file->getRealPath()));
-      $folderPrefix = '/' . strtolower($folderName);
-
-      // Convert file path to namespaced class
-      $class = $this->convertFileToClass($file->getRealPath());
-
-      if (!class_exists($class)) {
-        require_once $file->getRealPath();
-
-        if (!class_exists($class)) {
-          continue;
-        }
-      }
-
-      $this->inspectController($class, $folderPrefix);
+    public function __construct(private Container $container)
+    {
     }
 
-    return $this->routes;
-  }
+    public function load(): array
+    {
+        $basePath = dirname(__DIR__, 2) . '/App/routes';
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($basePath)
+        );
 
-  private function convertFileToClass(string $filePath): string
-  {
-    $relative = str_replace(dirname(__DIR__, 2) . '/', '', $filePath);
+        foreach ($iterator as $file) {
+            if ($file->isDir()) continue;
+            if (!preg_match('/Controller\.php$/', $file->getFilename())) continue;
 
-    $class = str_replace('/', '\\', $relative);
+            $folderPrefix = '/' . strtolower(basename(dirname($file->getRealPath())));
 
-    return preg_replace('/\.php$/', '', $class);
-  }
+            $class = $this->convertFileToClass($file->getRealPath());
 
-  private function inspectController(string $class, string $folderPrefix)
-  {
-    $reflection = new ReflectionClass($class);
+            if (!class_exists($class)) {
+                require_once $file->getRealPath();
+            }
 
-    // Container Class
-    $container = new \Framework\Core\Container();
+            if (!class_exists($class)) continue;
 
-    $controllerInstance = $container->get($class);
-
-    foreach ($reflection->getMethods() as $method) {
-      foreach ($method->getAttributes() as $attribute) {
-
-        $instance = $attribute->newInstance();
-        $relativePath = '/' . ltrim($instance->path, '/');
-        $fullPath = rtrim($folderPrefix . $relativePath, '/');
-
-        if ($instance instanceof Get) {
-          $this->routes[] = [
-            'method' => 'GET',
-            'path' => $fullPath,
-            'regex' => $this->convertToRegex($fullPath),
-            'controller' => $controllerInstance,
-            'function' => $method->getName(),
-            'params' => $this->extractParams($fullPath)
-          ];
+            $this->inspectController($class, $folderPrefix);
         }
 
-        if ($instance instanceof Post) {
-          $this->routes[] = [
-            'method' => 'POST',
-            'path' => $fullPath,
-            'regex' => $this->convertToRegex($fullPath),
-            'controller' => $controllerInstance,
-            'function' => $method->getName(),
-            'params' => $this->extractParams($fullPath)
-          ];
-        }
-      }
+        return $this->routes;
     }
-  }
 
-  private function convertToRegex(string $path): string
-  {
-    $regex = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<$1>[^/]+)', $path);
-    return '#^' . $regex . '$#';
-  }
+    private function convertFileToClass(string $filePath): string
+    {
+        $relative = str_replace(dirname(__DIR__, 2) . '/', '', $filePath);
+        return str_replace('/', '\\', preg_replace('/\.php$/', '', $relative));
+    }
 
-  private function extractParams(string $path): array
-  {
-    preg_match_all('/\{([a-zA-Z0-9_]+)\}/', $path, $matches);
-    return $matches[1];
-  }
+    private function inspectController(string $class, string $folderPrefix)
+    {
+        $reflection = new ReflectionClass($class);
+        $controller = $this->container->get($class);
+
+        foreach ($reflection->getMethods() as $method) {
+            foreach ($method->getAttributes() as $attribute) {
+                $instance = $attribute->newInstance();
+                $relativePath = '/' . ltrim($instance->path, '/');
+                $fullPath = rtrim($folderPrefix . $relativePath, '/');
+
+                if ($instance instanceof Get) {
+                    $this->routes[] = [
+                        'method' => 'GET',
+                        'path' => $fullPath,
+                        'regex' => $this->convertToRegex($fullPath),
+                        'controller' => $controller,
+                        'function' => $method->getName(),
+                        'params' => $this->extractParams($fullPath)
+                    ];
+                }
+            }
+        }
+    }
+
+    private function convertToRegex(string $path): string
+    {
+        $regex = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<$1>[^/]+)', $path);
+        $regex = rtrim($regex, '/'); // remove trailing slash
+        return '#^' . $regex . '/?$#'; // allow optional trailing slash
+    }
+
+    private function extractParams(string $path): array
+    {
+        preg_match_all('/\{([a-zA-Z0-9_]+)\}/', $path, $matches);
+        return $matches[1];
+    }
 }
