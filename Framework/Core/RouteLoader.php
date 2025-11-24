@@ -58,13 +58,10 @@ class RouteLoader
 
   private function convertFileToClass(string $filePath): string
   {
-    // Example: /var/www/App/routes/products/ProductsController.php
     $relative = str_replace(dirname(__DIR__, 2) . '/', '', $filePath);
 
-    // Convert file path to PSR-4 namespace
     $class = str_replace('/', '\\', $relative);
 
-    // Remove extension
     return preg_replace('/\.php$/', '', $class);
   }
 

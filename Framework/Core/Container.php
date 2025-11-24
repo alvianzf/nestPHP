@@ -6,52 +6,46 @@ use ReflectionClass;
 
 class Container
 {
-  private array $singletons = [];
+    private array $singletons = [];
 
-  public function get(string $class)
-  {
-    // Return singleton if exists
-    if (isset($this->singletons[$class])) {
-      return $this->singletons[$class];
+    public function get(string $class)
+    {
+        // Return singleton if exists
+        if (isset($this->singletons[$class])) {
+            return $this->singletons[$class];
+        }
+
+        // Build using reflection
+        $object = $this->resolve($class);
+
+        // Store as singleton
+        $this->singletons[$class] = $object;
+
+        return $object;
     }
 
-    // Build using reflection
-    $object = $this->resolve($class);
+    private function resolve(string $class)
+    {
+        $reflection = new ReflectionClass($class);
 
-    // Store as singleton
-    $this->singletons[$class] = $object;
+        $constructor = $reflection->getConstructor();
 
-    return $object;
-  }
+        if (!$constructor) {
+            return new $class;
+        }
 
-  private function resolve(string $class)
-  {
-    $reflection = new ReflectionClass($class);
+        $dependencies = [];
 
-    $constructor = $reflection->getConstructor();
+        foreach ($constructor->getParameters() as $param) {
+            $type = $param->getType();
 
-    if (!$constructor) {
-      return new $class();
+            if (!$type) {
+                throw new \Exception("Cannot resolve dependency for $class");
+            }
+
+            $dependencies[] = $this->get($type->getName());
+        }
+
+        return $reflection->newInstanceArgs($dependencies);
     }
-
-    $dependencies = [];
-
-    foreach ($constructor->getParameters() as $param) {
-
-      $type = $param->getType();
-
-      // If type missing or not a class
-      if (!$type instanceof \ReflectionNamedType || $type->isBuiltin()) {
-        throw new \Exception(
-          "Cannot resolve dependency '{$param->getName()}' in {$class}"
-        );
-      }
-
-      // Resolve recursively
-      $dependencies[] = $this->get($type->getName());
-    }
-
-    return $reflection->newInstanceArgs($dependencies);
-  }
-
 }
